@@ -1,0 +1,83 @@
+name: ci
+
+# Format, tidy, vet, race tests against a disposable PostgreSQL, staticcheck, golangci-lint and
+# govulncheck. Actions are pinned by commit; the comment names the release the commit belongs to.
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        # The image and digest of compose.test.yaml.
+        image: postgres:18.7-alpine3.24@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+        env:
+          POSTGRES_DB: kit_test
+          POSTGRES_USER: postgres
+          # Not a secret: an empty database that lives for one job.
+          POSTGRES_PASSWORD: local-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kit_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # Fail on a go.mod/runner mismatch instead of downloading another toolchain.
+      GOTOOLCHAIN: local
+      KIT_TEST_DB_DSN: postgres://postgres:local-test-only@127.0.0.1:5432/kit_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -s -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'Run gofmt -s -w on:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Check go.mod and go.sum are tidy
+        run: go mod tidy -diff
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        # -p 1: the database tests share one PostgreSQL and each creates schemas in it.
+        run: go test -race -count=1 -p 1 ./...
+
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+
+      - name: Lint
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
+
+      - name: Scan Go dependencies
+        run: go tool govulncheck ./...
+

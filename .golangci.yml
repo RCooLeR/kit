@@ -1,0 +1,84 @@
+# golangci-lint v2 configuration of the kit's Go module.
+#
+# Run (pinned): go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
+# v2.13.2 cannot read Go 1.27 export data and fails with
+# "export data version 5 is greater than maximum supported version 4"; v2.15.0 can.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck (with gosimple and stylecheck), unused.
+  default: standard
+  enable:
+    - bodyclose     # HTTP response bodies are closed
+    - errorlint     # errors.Is/As instead of == and type switches; %w in fmt.Errorf
+    - funlen        # hard ceiling; aim for about 40 lines
+    - gosec
+    - lll
+    - misspell
+    - noctx         # HTTP requests, exec and dials take a context
+    - nolintlint    # every //nolint names the linter and gives a reason
+    - revive        # doc comments, naming, error strings
+    - unconvert
+    - usestdlibvars # http.MethodGet, http.StatusOK instead of literals
+  settings:
+    funlen:
+      lines: 100
+      statements: 60
+    gosec:
+      excludes:
+        - G104 # unchecked errors: duplicate of errcheck
+        - G115 # integer conversions: too noisy in protocol decoders; review them by hand
+    lll:
+      line-length: 140
+      tab-width: 4
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: var-naming
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - gosec
+          - lll
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,29 @@
+# Disposable PostgreSQL for the kit's database tests (dbpg, dbmigrate, testpg) and nothing else. Data
+# lives in memory and is gone on stop. Never point KIT_TEST_DB_DSN at a real database: every test
+# creates and drops a schema, and testpg refuses any database not named kit_test*.
+#
+#   docker compose -f compose.test.yaml up -d --wait
+#   KIT_TEST_DB_DSN=postgres://postgres:local-test-only@127.0.0.1:55451/kit_test go test -p 1 ./...
+#   docker compose -f compose.test.yaml down
+#
+# Validate: docker compose -f compose.test.yaml config --quiet
+name: kit-tests
+
+services:
+  test-db:
+    # Digest resolved on 2026-11-24 with `docker buildx imagetools inspect postgres:18.7-alpine3.24`.
+    image: postgres:18.7-alpine3.24@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+    environment:
+      POSTGRES_DB: kit_test
+      POSTGRES_USER: postgres
+      # A fixed password is acceptable here only: the database is empty, in memory and on loopback.
+      POSTGRES_PASSWORD: local-test-only
+    ports:
+      - "${KIT_TEST_DB_BIND:-127.0.0.1}:${KIT_TEST_DB_PORT:-55451}:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kit_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

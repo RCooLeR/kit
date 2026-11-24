@@ -1,0 +1,17 @@
+# Go: local binaries and coverage
+*.exe
+*.test
+*.out
+
+# Local configuration; only examples are tracked
+.env
+compose.override.yaml
+
+# Editor files
+.idea/
+.vscode/
+*.iml
+
+# OS noise
+.DS_Store
+Thumbs.db
