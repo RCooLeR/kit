@@ -30,7 +30,7 @@ Three rules shape the module:
 | `httpserver` | Server with all four timeouts, graceful shutdown, liveness and readiness handlers | standard library |
 | `jsonhttp` | `WriteJSON`, `WriteError` with the `{"error":{"code","message"}}` envelope | standard library |
 | `retry` | Next backoff delay, jitter, context sleep, `Retry-After` | standard library |
-| `herald` | Client of the Herald notification service: send events, register addresses, spool to disk while Herald is unreachable | standard library |
+| `herald` | Client of the Herald notification service: send events, register addresses, set a user's preferences, spool to disk while Herald is unreachable; verify the signed answer callbacks | standard library |
 | `webauth` | argon2id password hashes, random tokens stored as digests, a login attempt limiter | x/crypto |
 | `logx` | A service's root zerolog logger, and a `log/slog` bridge | zerolog |
 | `promx` | Private registry, `/metrics` handler, build-info gauge with the caller's name | client_golang |

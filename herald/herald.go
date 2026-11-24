@@ -8,6 +8,11 @@
 // twice. Send still reports ErrSpooled, so a producer of critical events can use its own direct
 // fallback when Herald did not accept the event in time.
 //
+// A tap on one of an event's actions comes back to the producer as a signed callback to the
+// action's URL. CallbackHandler (or VerifyCallback) checks the signature with the producer's
+// callback key and decodes it. PutSettings keeps a user's language, time zone, quiet hours and
+// preferences in Herald.
+//
 // The package depends on the standard library only.
 package herald
 
@@ -304,6 +309,48 @@ func (c *Client) DeleteEndpoint(ctx context.Context, app, address string) error 
 		return fmt.Errorf("herald: encode endpoint: %w", err)
 	}
 	return c.post(ctx, http.MethodDelete, "/v1/endpoints", body)
+}
+
+// Preference is one choice of a user: whether events of a class reach a channel, and from which
+// severity on. The most specific choice wins: an exact event type before "*", then an exact
+// channel before "*".
+type Preference struct {
+	// EventClass is an event type, or "*" for every type.
+	EventClass string `json:"event_class"`
+	// Channel is "webpush", "telegram", "email", "fcm" or "ha_notify", or "*" for every channel.
+	Channel string `json:"channel"`
+	Enabled bool   `json:"enabled"`
+	// MinSeverity, when set, holds back events below it.
+	MinSeverity Severity `json:"min_severity,omitempty"`
+}
+
+// Settings are what a producer keeps in Herald for one of its users. Each call replaces all of
+// them, the preferences included.
+type Settings struct {
+	// Subject is the producer's opaque name for the user, starting with the producer's token.
+	Subject string `json:"subject"`
+	// Locale is "uk" (the default) or "en".
+	Locale string `json:"locale,omitempty"`
+	// TimeZone is an IANA zone such as "Europe/Kyiv" (the default).
+	TimeZone string `json:"time_zone,omitempty"`
+	// QuietHoursStart and QuietHoursEnd are "HH:MM" local times, both or neither. Events that
+	// arrive in between wait for the end, unless the producer marked them as bypassing quiet hours.
+	QuietHoursStart string       `json:"quiet_hours_start,omitempty"`
+	QuietHoursEnd   string       `json:"quiet_hours_end,omitempty"`
+	Preferences     []Preference `json:"preferences"`
+}
+
+// PutSettings stores the settings of one of the producer's users. The user needs no registered
+// address yet.
+func (c *Client) PutSettings(ctx context.Context, settings Settings) error {
+	if settings.Preferences == nil {
+		settings.Preferences = []Preference{}
+	}
+	body, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("herald: encode settings: %w", err)
+	}
+	return c.post(ctx, http.MethodPut, "/v1/preferences", body)
 }
 
 // maxErrorBody bounds what is read of an error answer.

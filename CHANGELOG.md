@@ -10,6 +10,8 @@ First set of packages, extracted from existing services while building Herald.
 - `buildinfo`, `secret`, `healthcheck`, `healthcheck/healthcheckcli`, `httpserver`, `jsonhttp`,
   `retry`, `logx`, `promx`, `dbpg`, `dbmigrate`, `testpg`.
 - `herald`: the client of the Herald notification service, with a disk spool.
+- `herald`: `PutSettings` (a user's language, time zone, quiet hours and preferences), and
+  `VerifyCallback`, `CallbackHandler` and `SignCallback` for the signed answer callbacks.
 - `webauth`: argon2id password hashing, tokens stored as digests, an attempt limiter.
 - `dbpg`: `Options.WaitFor` keeps trying a database that is still starting.
 - Licensed under MIT.
