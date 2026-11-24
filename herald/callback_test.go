@@ -133,3 +133,32 @@ func TestPutSettings(t *testing.T) {
 		t.Fatalf("PutSettings sent\n%s\nwant\n%s", requests[1].raw, want)
 	}
 }
+
+func TestForwardAnswer(t *testing.T) {
+	fake := newFakeHerald(t)
+	client := newClient(t, fake, "")
+	fake.answer(http.StatusOK, `{"event_id":"e1","action":"approve","kind":"callback","channel":"webpush"}`)
+	answer, err := client.ForwardAnswer(t.Context(), "AAAAAAAAAAAAAAAAAAAAAA.0.BBBBBBBBBBBBBBBB", "")
+	if err != nil || answer != (ForwardedAnswer{EventID: "e1", Action: "approve", Kind: "callback", Channel: "webpush"}) {
+		t.Fatalf("ForwardAnswer = %+v, %v", answer, err)
+	}
+	request := fake.seen()[0]
+	if request.method != http.MethodPost || request.path != "/v1/answers" || request.auth != "Bearer test-key" ||
+		request.raw != `{"reply":"","token":"AAAAAAAAAAAAAAAAAAAAAA.0.BBBBBBBBBBBBBBBB"}` {
+		t.Fatalf("ForwardAnswer sent %s %s %s", request.method, request.path, request.raw)
+	}
+
+	for status, code := range map[int]string{
+		http.StatusConflict: CodeAlreadyAnswered, http.StatusGone: CodeExpired, http.StatusNotFound: CodeInvalidToken,
+	} {
+		fake.answer(status, `{"error":{"code":"`+code+`","message":"x"}}`)
+		_, err := client.ForwardAnswer(t.Context(), "token", "")
+		if rejected, ok := errors.AsType[*RejectedError](err); !ok || rejected.Code != code {
+			t.Errorf("HTTP %d = %v, want RejectedError %s", status, err, code)
+		}
+	}
+	fake.answer(http.StatusOK, `not json`)
+	if _, err := client.ForwardAnswer(t.Context(), "token", ""); err == nil {
+		t.Fatal("an answer that is not JSON was accepted")
+	}
+}

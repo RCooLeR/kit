@@ -10,8 +10,9 @@
 //
 // A tap on one of an event's actions comes back to the producer as a signed callback to the
 // action's URL. CallbackHandler (or VerifyCallback) checks the signature with the producer's
-// callback key and decodes it. PutSettings keeps a user's language, time zone, quiet hours and
-// preferences in Herald.
+// callback key and decodes it. A tap in the producer's own app (a Web Push or FCM notification)
+// reaches the producer's backend first, which hands the token to Herald with ForwardAnswer.
+// PutSettings keeps a user's language, time zone, quiet hours and preferences in Herald.
 //
 // The package depends on the standard library only.
 package herald
@@ -353,12 +354,51 @@ func (c *Client) PutSettings(ctx context.Context, settings Settings) error {
 	return c.post(ctx, http.MethodPut, "/v1/preferences", body)
 }
 
-// maxErrorBody bounds what is read of an error answer.
+// ForwardedAnswer is what Herald recorded for an answer an app backend passed on.
+type ForwardedAnswer struct {
+	EventID string `json:"event_id"`
+	// Action is the action's key within its event.
+	Action string `json:"action"`
+	// Kind is "callback" or "reply".
+	Kind string `json:"kind"`
+	// Channel is the channel of the notification that was answered ("webpush", "fcm").
+	Channel string `json:"channel"`
+}
+
+// Codes of the RejectedError ForwardAnswer returns for a token that cannot be used.
+const (
+	CodeInvalidToken    = "invalid_token"
+	CodeAlreadyAnswered = "already_answered"
+	CodeExpired         = "expired"
+)
+
+// ForwardAnswer passes on the token of an action button a user tapped in the producer's own app
+// (a Web Push or FCM notification) with the text of a reply action, empty for the other kinds.
+// Herald accepts it only for a notification of one of the producer's apps, and only once: a
+// repeat gets a *RejectedError with Code CodeAlreadyAnswered, a late tap CodeExpired, a token
+// Herald does not know CodeInvalidToken. The producer then learns of the answer through its
+// callback like for any other channel.
+func (c *Client) ForwardAnswer(ctx context.Context, token, reply string) (ForwardedAnswer, error) {
+	body, err := json.Marshal(map[string]string{"token": token, "reply": reply})
+	if err != nil {
+		return ForwardedAnswer{}, fmt.Errorf("herald: encode answer: %w", err)
+	}
+	var answer ForwardedAnswer
+	err = c.call(ctx, http.MethodPost, "/v1/answers", body, &answer)
+	return answer, err
+}
+
+// maxErrorBody bounds what is read of an answer.
 const maxErrorBody = 4096
 
 // post makes one call. It returns nil for a 2xx answer, *RejectedError for an answer that will
 // not change on a retry, and a plain error for everything worth another attempt.
 func (c *Client) post(ctx context.Context, method, path string, body []byte) error {
+	return c.call(ctx, method, path, body, nil)
+}
+
+// call makes one call like post and, for a 2xx answer with out set, decodes the answer into out.
+func (c *Client) call(ctx context.Context, method, path string, body []byte, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, method, c.base.String()+path, bytes.NewReader(body))
@@ -376,6 +416,11 @@ func (c *Client) post(ctx context.Context, method, path string, body []byte) err
 	raw, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
 	switch {
 	case response.StatusCode >= 200 && response.StatusCode < 300:
+		if out != nil {
+			if err := json.Unmarshal(raw, out); err != nil {
+				return fmt.Errorf("herald: %s %s: decode answer: %w", method, path, err)
+			}
+		}
 		return nil
 	case response.StatusCode == http.StatusTooManyRequests, response.StatusCode == http.StatusRequestTimeout,
 		response.StatusCode >= 500:
