@@ -15,6 +15,7 @@ const (
 	prometheus = "github.com/prometheus/"
 	pgx        = "github.com/jackc/"
 	migrate    = "github.com/golang-migrate/"
+	paho       = "github.com/eclipse/paho"
 )
 
 // TestPackagesStaySplitByWeight guards the promise that importing a small package does not pull a
@@ -38,13 +39,15 @@ func TestPackagesStaySplitByWeight(t *testing.T) {
 		{pkg: "jsonhttp", stdlibOnly: true},
 		{pkg: "retry", stdlibOnly: true},
 		{pkg: "herald", stdlibOnly: true},
-		{pkg: "webauth", forbidden: []string{zerolog, cli, prometheus, pgx, migrate}},
-		{pkg: "logx", forbidden: []string{cli, prometheus, pgx, migrate}},
-		{pkg: "healthcheck/healthcheckcli", forbidden: []string{zerolog, prometheus, pgx, migrate}},
-		{pkg: "promx", forbidden: []string{zerolog, cli, pgx, migrate}},
-		{pkg: "dbpg", forbidden: []string{zerolog, cli, prometheus, migrate}},
-		{pkg: "testpg", forbidden: []string{zerolog, cli, prometheus, migrate}},
-		{pkg: "dbmigrate", forbidden: []string{zerolog, cli, prometheus}},
+		{pkg: "hamqtt", stdlibOnly: true},
+		{pkg: "webauth", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
+		{pkg: "mqttx", forbidden: []string{zerolog, cli, prometheus, pgx, migrate}},
+		{pkg: "logx", forbidden: []string{cli, prometheus, pgx, migrate, paho}},
+		{pkg: "healthcheck/healthcheckcli", forbidden: []string{zerolog, prometheus, pgx, migrate, paho}},
+		{pkg: "promx", forbidden: []string{zerolog, cli, pgx, migrate, paho}},
+		{pkg: "dbpg", forbidden: []string{zerolog, cli, prometheus, migrate, paho}},
+		{pkg: "testpg", forbidden: []string{zerolog, cli, prometheus, migrate, paho}},
+		{pkg: "dbmigrate", forbidden: []string{zerolog, cli, prometheus, paho}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.pkg, func(t *testing.T) {

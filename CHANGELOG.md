@@ -16,6 +16,11 @@ First set of packages, extracted from existing services while building Herald.
   or FCM) to the service.
 - `webauth`: argon2id password hashing, tokens stored as digests, an attempt limiter.
 - `dbpg`: `Options.WaitFor` keeps trying a database that is still starting.
+- `mqttx`: an MQTT client for services that publish (Eclipse Paho): retained availability with a
+  last will, QoS 1 publish with a timeout, subscriptions and handlers renewed on every reconnect,
+  and a replay when Home Assistant announces its birth.
+- `hamqtt`: Home Assistant MQTT discovery configs (`default_entity_id` included) and topics, with
+  checks of the IDs; standard library only.
 - Licensed under MIT.
 - The TypeScript packages (`@rcooler/*`) live in their own repository,
   [web-kit](https://github.com/RCooLeR/web-kit).

@@ -2,7 +2,7 @@
 
 Small Go packages for HTTP services: build information, secrets from files, an HTTP server with
 health endpoints, JSON errors, retries, logging, Prometheus metrics, PostgreSQL and migrations,
-password hashing, and the client of the Herald notification service.
+MQTT and Home Assistant discovery, password hashing, and the client of the Herald notification service.
 
 **Status: before 1.0.** No version is tagged yet, interfaces may still change, and there is no
 compatibility promise. Changes are listed in [CHANGELOG.md](CHANGELOG.md). The TypeScript
@@ -32,6 +32,8 @@ Three rules shape the module:
 | `retry` | Next backoff delay, jitter, context sleep, `Retry-After` | standard library |
 | `herald` | Client of the Herald notification service: send events, register addresses, set a user's preferences, spool to disk while Herald is unreachable; verify the signed answer callbacks | standard library |
 | `webauth` | argon2id password hashes, random tokens stored as digests, a login attempt limiter | x/crypto |
+| `hamqtt` | Home Assistant MQTT discovery configs and topics, with checks of every ID the caller passes | standard library |
+| `mqttx` | MQTT client for publishing services: availability with a last will, QoS 1 publish, replay after a reconnect or a Home Assistant restart | Eclipse Paho |
 | `logx` | A service's root zerolog logger, and a `log/slog` bridge | zerolog |
 | `promx` | Private registry, `/metrics` handler, build-info gauge with the caller's name | client_golang |
 | `dbpg` | pgx pool with a startup ping and an optional wait for a database that is still starting; password into a DSN | pgx |
