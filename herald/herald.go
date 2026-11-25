@@ -96,8 +96,10 @@ type Event struct {
 	Body     string         `json:"body,omitempty"`
 	URL      string         `json:"url,omitempty"`
 	Image    string         `json:"image,omitempty"`
-	// PublicPayload may pass through third-party push services; PrivatePayload stays in Herald
-	// for the app to fetch after the tap.
+	// PublicPayload travels with the notification and may pass through third-party push services.
+	// Herald never delivers PrivatePayload to anybody and does not keep it: it accepts the field
+	// and drops it. An app shows details after a tap by fetching them from its own backend through
+	// URL. Leave it empty.
 	PublicPayload  map[string]any `json:"public_payload,omitempty"`
 	PrivatePayload map[string]any `json:"private_payload,omitempty"`
 	Actions        []Action       `json:"actions,omitempty"`
