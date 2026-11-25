@@ -64,6 +64,9 @@ type Options struct {
 type Client struct {
 	opts   Options
 	client paho.Client
+	// ctx is handed to the OnConnect handlers; Close cancels it.
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	mu            sync.Mutex
 	connectFns    []func(context.Context)
@@ -86,6 +89,7 @@ func New(opts Options) *Client {
 		opts.Logger = slog.New(slog.DiscardHandler)
 	}
 	c := &Client{opts: opts, subscriptions: map[string]func(string, []byte){}}
+	c.ctx, c.cancel = context.WithCancel(context.Background())
 	c.client = paho.NewClient(c.clientOptions())
 	return c
 }
@@ -139,7 +143,7 @@ func (c *Client) onConnect(client paho.Client) {
 		}
 	}
 	for _, handler := range handlers {
-		go handler(context.Background())
+		go handler(c.ctx)
 	}
 }
 
@@ -162,7 +166,7 @@ func wrap(handler func(topic string, payload []byte)) paho.MessageHandler {
 
 // OnConnect registers fn to run (on its own goroutine) after every connection, the first and each
 // reconnect: the place to publish discovery and the current state, which a clean session lost.
-// Register handlers before connecting.
+// Its context ends when Close is called. Register handlers before connecting.
 func (c *Client) OnConnect(fn func(ctx context.Context)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -272,8 +276,15 @@ func (c *Client) watchBirth(ctx context.Context, statusTopic, onlinePayload stri
 	})
 }
 
-// Close marks the service offline, when connected, and disconnects.
+// Close ends the context of the OnConnect handlers, marks the service offline when connected, and
+// disconnects.
+//
+// Paho always ends a session with a clean DISCONNECT, and a broker does not publish the last will
+// after one. So when the offline message cannot be delivered in time, the retained availability
+// stays online: entities that must never show stale values should also expire on their own (Home
+// Assistant's expire_after).
 func (c *Client) Close() {
+	c.cancel()
 	if c.opts.AvailabilityTopic != "" && c.client.IsConnectionOpen() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.opts.Timeout)
 		_ = c.Publish(ctx, c.opts.AvailabilityTopic, []byte(c.opts.OfflinePayload), true)

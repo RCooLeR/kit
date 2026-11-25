@@ -342,3 +342,22 @@ func TestABirthIsAnsweredOnceAfterTheDelay(t *testing.T) {
 		t.Fatal("WatchBirth accepted the availability topic as the status topic")
 	}
 }
+
+// A connect handler gets a context that Close cancels, so a handler still publishing at
+// shutdown stops instead of outliving the client.
+func TestCloseCancelsTheConnectHandlers(t *testing.T) {
+	b := newBroker(t)
+	client := newClient(t, b)
+	var started, stopped atomic.Bool
+	client.OnConnect(func(ctx context.Context) {
+		started.Store(true)
+		<-ctx.Done()
+		stopped.Store(true)
+	})
+	if err := client.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	eventually(t, "the connect handler", started.Load)
+	client.Close()
+	eventually(t, "the handler to see the cancellation", stopped.Load)
+}
