@@ -98,11 +98,13 @@ type Event struct {
 	Image    string         `json:"image,omitempty"`
 	// PublicPayload may pass through third-party push services; PrivatePayload stays in Herald
 	// for the app to fetch after the tap.
-	PublicPayload    map[string]any `json:"public_payload,omitempty"`
-	PrivatePayload   map[string]any `json:"private_payload,omitempty"`
-	Actions          []Action       `json:"actions,omitempty"`
-	ExpiresAt        *time.Time     `json:"expires_at,omitempty"`
-	QuietHoursBypass bool           `json:"quiet_hours_bypass,omitempty"`
+	PublicPayload  map[string]any `json:"public_payload,omitempty"`
+	PrivatePayload map[string]any `json:"private_payload,omitempty"`
+	Actions        []Action       `json:"actions,omitempty"`
+	ExpiresAt      *time.Time     `json:"expires_at,omitempty"`
+	// QuietHoursBypass sends a critical event at once inside quiet hours and past an opt-out; on
+	// an event of a lower severity it changes nothing.
+	QuietHoursBypass bool `json:"quiet_hours_bypass,omitempty"`
 	// OccurredAt is when it happened; Send sets it to now when zero.
 	OccurredAt time.Time `json:"occurred_at"`
 }
@@ -346,7 +348,9 @@ func (c *Client) PutEndpoint(ctx context.Context, endpoint Endpoint) error {
 }
 
 // DeleteEndpoint removes an address, for example after the user signed out or switched
-// notifications off. Removing an unknown address is not an error.
+// notifications off. Nothing is sent there any more; what was sent stays in Herald's delivery log,
+// and an answer to a notification still on the device still counts. Removing an unknown address
+// is not an error.
 func (c *Client) DeleteEndpoint(ctx context.Context, app, address string) error {
 	body, err := json.Marshal(map[string]string{"app": app, "address": address})
 	if err != nil {
@@ -379,7 +383,8 @@ type Settings struct {
 	// TimeZone is an IANA zone name such as "America/New_York"; empty keeps Herald's default.
 	TimeZone string `json:"time_zone,omitempty"`
 	// QuietHoursStart and QuietHoursEnd are "HH:MM" local times, both or neither. Events that
-	// arrive in between wait for the end, unless the producer marked them as bypassing quiet hours.
+	// arrive in between wait for the end, unless they are critical and the producer marked them as
+	// bypassing quiet hours.
 	QuietHoursStart string       `json:"quiet_hours_start,omitempty"`
 	QuietHoursEnd   string       `json:"quiet_hours_end,omitempty"`
 	Preferences     []Preference `json:"preferences"`
