@@ -38,6 +38,10 @@ func EqualHash(a, b []byte) bool {
 // Limiter allows a fixed number of attempts per key in a time window. It guards the endpoints
 // that accept guessable secrets (passwords, codes). State is in memory, which fits a
 // single-instance service; a restart forgets the attempts.
+//
+// It holds at most maxBuckets keys. When fresh keys fill it, the key within its limit with the
+// fewest attempts makes room; a key over its limit is never forgotten before its window ends. When
+// every key is over its limit, a new key is refused until a window ends.
 type Limiter struct {
 	maxAttempts int
 	window      time.Duration
@@ -68,31 +72,47 @@ func (l *Limiter) Allow(key string) bool {
 
 	b := l.buckets[key]
 	if b == nil || now.Sub(b.startedAt) >= l.window {
-		if len(l.buckets) >= maxBuckets {
-			l.dropExpired(now)
+		if b == nil && len(l.buckets) >= maxBuckets && !l.makeRoom(now) {
+			return false
 		}
-		l.buckets[key] = &bucket{startedAt: now, count: 1}
-		return true
+		b = &bucket{startedAt: now}
+		l.buckets[key] = b
 	}
 	b.count++
 	return b.count <= l.maxAttempts
 }
 
-// Reset forgets the attempts of key, after a success.
+// Reset forgets the attempts of key, after a success. Reset only the key the success proves (the
+// login that signed in): resetting a shared key such as the client's address would let anyone with
+// one account clear the count of everyone guessing from that address.
 func (l *Limiter) Reset(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.buckets, key)
 }
 
-func (l *Limiter) dropExpired(now time.Time) {
+// makeRoom frees one place for a new key: expired keys go first, then the key within its limit
+// with the fewest attempts, the oldest of those. Forgetting a key with many attempts would hand
+// them back, so a flood of fresh keys pushes out only its own kind. It reports false when every
+// key is over its limit, which is the attempt to refuse.
+func (l *Limiter) makeRoom(now time.Time) bool {
+	var victim *bucket
+	var victimKey string
 	for key, b := range l.buckets {
-		if now.Sub(b.startedAt) >= l.window {
+		switch {
+		case now.Sub(b.startedAt) >= l.window:
 			delete(l.buckets, key)
+		case b.count > l.maxAttempts:
+		case victim == nil || b.count < victim.count || (b.count == victim.count && b.startedAt.Before(victim.startedAt)):
+			victim, victimKey = b, key
 		}
 	}
-	// Still full of live buckets: start over rather than grow without bound.
-	if len(l.buckets) >= maxBuckets {
-		clear(l.buckets)
+	if len(l.buckets) < maxBuckets {
+		return true
 	}
+	if victim == nil {
+		return false
+	}
+	delete(l.buckets, victimKey)
+	return true
 }

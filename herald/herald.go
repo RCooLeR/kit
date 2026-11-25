@@ -2,8 +2,10 @@
 // notification service. The producer decides that something happened; Herald decides who hears
 // about it, on which channel and when.
 //
-// Send never loses an event because Herald is restarting or unreachable: an event that could not
-// be delivered is written to a spool directory and replayed by Flush or Run. Every event carries
+// Send never loses an event because Herald is restarting, unreachable or refusing the producer
+// (a rotated key, a route that is gone): an event that could not be delivered is written to a
+// spool directory and replayed by Flush or Run. Only an event Herald refuses for its own content
+// is dropped. Every event carries
 // an ID made here, and Herald treats a repeated ID as the same event, so a replay cannot notify
 // twice. Send still reports ErrSpooled, so a producer of critical events can use its own direct
 // fallback when Herald did not accept the event in time.
@@ -25,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"strings"
@@ -122,8 +125,8 @@ type Endpoint struct {
 // is wrapped together with the cause.
 var ErrSpooled = errors.New("event spooled for a later attempt")
 
-// RejectedError means Herald refused a request for good: a wrong key, an unknown event type, an
-// invalid field. Trying again cannot succeed.
+// RejectedError means Herald refused what a request says: an invalid field, a body too large,
+// an unknown app, a token that cannot be answered. Sending the same request again cannot succeed.
 type RejectedError struct {
 	// Status is the HTTP status; Code is Herald's stable error code, empty when it sent none.
 	Status int
@@ -135,6 +138,24 @@ func (e *RejectedError) Error() string {
 		return fmt.Sprintf("herald rejected the request: HTTP %d", e.Status)
 	}
 	return fmt.Sprintf("herald rejected the request: HTTP %d (%s)", e.Status, e.Code)
+}
+
+// AccessError means Herald, or a proxy in front of it, refused the producer rather than the
+// request: a key Herald does not accept or a disabled producer (401), an event type the key may
+// not send (403), a route that is gone (404 without Herald's error code, as a proxy answers while
+// Herald restarts) or a redirect. The request itself may be fine: once the key, the producer or
+// the address is fixed, the same request succeeds, so Send spools the event and Flush keeps it.
+type AccessError struct {
+	// Status is the HTTP status; Code is Herald's error code, empty when it sent none.
+	Status int
+	Code   string
+}
+
+func (e *AccessError) Error() string {
+	if e.Code == "" {
+		return fmt.Sprintf("herald refused the producer: HTTP %d", e.Status)
+	}
+	return fmt.Sprintf("herald refused the producer: HTTP %d (%s)", e.Status, e.Code)
 }
 
 // DefaultTimeout bounds one call when Options.Timeout is zero. It is short on purpose: a producer
@@ -155,9 +176,14 @@ type Options struct {
 	// HTTPClient is used for the calls; nil means a client that follows no redirects, so the key
 	// is never sent to another host.
 	HTTPClient *http.Client
-	// OnDrop is called when a spooled event is discarded because Herald rejected it for good or
+	// OnDrop is called when a spooled event is discarded because Herald rejected its content or
 	// its file was unreadable. Optional; meant for a log line.
 	OnDrop func(eventID string, err error)
+	// OnAccessError is called by Run when the replay stops on an *AccessError: the spool keeps
+	// growing until someone fixes the key, the producer or the address. It is called once when
+	// that starts and again only after a replay got through. Optional; meant for a log line or an
+	// alert.
+	OnAccessError func(err error)
 }
 
 // Client sends events to one Herald. It is safe for concurrent use.
@@ -169,6 +195,8 @@ type Client struct {
 	spool   *spool
 	onDrop  func(eventID string, err error)
 	now     func() time.Time
+	// onAccessError reports a replay stopped by an *AccessError.
+	onAccessError func(err error)
 }
 
 // New returns a client. The spool directory is created when it does not exist.
@@ -187,6 +215,8 @@ func New(opts Options) (*Client, error) {
 		http:    opts.HTTPClient,
 		onDrop:  opts.OnDrop,
 		now:     time.Now,
+
+		onAccessError: opts.OnAccessError,
 	}
 	if client.timeout <= 0 {
 		client.timeout = DefaultTimeout
@@ -205,8 +235,9 @@ func New(opts Options) (*Client, error) {
 }
 
 // Send hands the event to Herald. It returns nil when Herald accepted it, a *RejectedError when
-// Herald refused it for good, and an error wrapping ErrSpooled when Herald could not be reached
-// or was busy and the event was written to the spool instead.
+// Herald refused its content, and an error wrapping ErrSpooled when the event was written to the
+// spool instead: Herald could not be reached, was busy, or refused the producer (an *AccessError,
+// wrapped too).
 func (c *Client) Send(ctx context.Context, event Event) error {
 	if event.ID == "" {
 		id, err := newUUID()
@@ -236,8 +267,9 @@ func (c *Client) Send(ctx context.Context, event Event) error {
 }
 
 // Flush replays the spool, oldest first, and returns how many events Herald accepted. It stops
-// at the first event Herald cannot take right now and returns that error; an event Herald
-// rejects for good is dropped, reported to OnDrop, and the replay goes on.
+// at the first event Herald cannot take right now and returns that error, an *AccessError
+// included: the events stay spooled. An event Herald rejects for its content is dropped, reported
+// to OnDrop, and the replay goes on.
 func (c *Client) Flush(ctx context.Context) (int, error) {
 	if c.spool == nil {
 		return 0, nil
@@ -249,6 +281,9 @@ func (c *Client) Flush(ctx context.Context) (int, error) {
 	sent := 0
 	for _, name := range names {
 		body, err := c.spool.read(name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // another Flush delivered it in the meantime
+		}
 		if err != nil {
 			c.drop(name, err)
 			continue
@@ -278,13 +313,21 @@ func (c *Client) drop(name string, cause error) {
 }
 
 // Run replays the spool every interval until ctx ends. A failed replay is tried again at the
-// next tick; Run itself never fails.
+// next tick; Run itself never fails. A replay stopped by an *AccessError goes to OnAccessError.
 func (c *Client) Run(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	refused := false
 	for {
-		// The error is the same "Herald is away" Send already reported; the next tick retries.
-		_, _ = c.Flush(ctx)
+		// "Herald is away" is what Send already reported; the next tick retries.
+		_, err := c.Flush(ctx)
+		_, isAccess := errors.AsType[*AccessError](err)
+		if isAccess && !refused && c.onAccessError != nil {
+			c.onAccessError(err)
+		}
+		if isAccess || err == nil {
+			refused = isAccess
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -330,9 +373,10 @@ type Preference struct {
 type Settings struct {
 	// Subject is the producer's opaque name for the user, starting with the producer's token.
 	Subject string `json:"subject"`
-	// Locale is "uk" (the default) or "en".
+	// Locale is one of the languages Herald has templates in, such as "en"; empty keeps Herald's
+	// default.
 	Locale string `json:"locale,omitempty"`
-	// TimeZone is an IANA zone such as "Europe/Kyiv" (the default).
+	// TimeZone is an IANA zone name such as "America/New_York"; empty keeps Herald's default.
 	TimeZone string `json:"time_zone,omitempty"`
 	// QuietHoursStart and QuietHoursEnd are "HH:MM" local times, both or neither. Events that
 	// arrive in between wait for the end, unless the producer marked them as bypassing quiet hours.
@@ -391,8 +435,9 @@ func (c *Client) ForwardAnswer(ctx context.Context, token, reply string) (Forwar
 // maxErrorBody bounds what is read of an answer.
 const maxErrorBody = 4096
 
-// post makes one call. It returns nil for a 2xx answer, *RejectedError for an answer that will
-// not change on a retry, and a plain error for everything worth another attempt.
+// post makes one call. It returns nil for a 2xx answer, *RejectedError for a refusal of what the
+// request says, *AccessError for a refusal of the producer, and a plain error for everything
+// worth another attempt.
 func (c *Client) post(ctx context.Context, method, path string, body []byte) error {
 	return c.call(ctx, method, path, body, nil)
 }
@@ -432,7 +477,25 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, out
 			} `json:"error"`
 		}
 		_ = json.Unmarshal(raw, &envelope) // an answer without the envelope leaves the code empty
-		return &RejectedError{Status: response.StatusCode, Code: envelope.Error.Code}
+		if refusesTheRequest(response.StatusCode, envelope.Error.Code) {
+			return &RejectedError{Status: response.StatusCode, Code: envelope.Error.Code}
+		}
+		return &AccessError{Status: response.StatusCode, Code: envelope.Error.Code}
+	}
+}
+
+// refusesTheRequest tells a refusal of what a request says from one of the producer. 400, 413 and
+// 422 are about the body whoever answers. 404, 409 and 410 are about it only when Herald itself
+// says why: a bare 404 is a route that is gone. Anything else (401, 403, 3xx) is about the
+// producer's key or address.
+func refusesTheRequest(status int, code string) bool {
+	switch status {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+		return true
+	case http.StatusNotFound, http.StatusConflict, http.StatusGone:
+		return code != "" && code != "not_found"
+	default:
+		return false
 	}
 }
 

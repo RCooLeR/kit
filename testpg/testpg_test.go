@@ -71,6 +71,7 @@ func TestOpenRefusesADatabaseOutsideThePrefix(t *testing.T) {
 	tests := map[string]string{
 		"another database":      "postgres://app:not-for-logs@127.0.0.1:1/production",
 		"prefix later in name":  "postgres://app:not-for-logs@127.0.0.1:1/copy_of_kit_test",
+		"dbname in the query":   "postgres://app:not-for-logs@127.0.0.1:1/kit_test?dbname=production",
 		"not a postgres URL":    "mysql://app:not-for-logs@127.0.0.1:1/kit_test",
 		"keyword/value DSN":     "host=127.0.0.1 port=1 dbname=kit_test password=not-for-logs",
 		"URL that cannot parse": "postgres://app:not-for-logs@[::1/kit_test",

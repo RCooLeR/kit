@@ -117,7 +117,7 @@ func TestPutSettings(t *testing.T) {
 		t.Fatalf("PutSettings: %v", err)
 	}
 	settings := Settings{
-		Subject: "shop/user:42", Locale: "en", TimeZone: "Europe/Kyiv", QuietHoursStart: "22:00", QuietHoursEnd: "07:00",
+		Subject: "shop/user:42", Locale: "en", TimeZone: "America/New_York", QuietHoursStart: "22:00", QuietHoursEnd: "07:00",
 		Preferences: []Preference{{EventClass: "*", Channel: "email", Enabled: false}, {EventClass: "order.shipped", Channel: "*", Enabled: true, MinSeverity: SeverityWarning}},
 	}
 	if err := client.PutSettings(t.Context(), settings); err != nil {
@@ -127,7 +127,7 @@ func TestPutSettings(t *testing.T) {
 	if requests[0].method != http.MethodPut || requests[0].path != "/v1/preferences" || requests[0].raw != `{"subject":"shop/user:42","preferences":[]}` {
 		t.Fatalf("PutSettings without choices sent %s %s %s", requests[0].method, requests[0].path, requests[0].raw)
 	}
-	const want = `{"subject":"shop/user:42","locale":"en","time_zone":"Europe/Kyiv","quiet_hours_start":"22:00","quiet_hours_end":"07:00",` +
+	const want = `{"subject":"shop/user:42","locale":"en","time_zone":"America/New_York","quiet_hours_start":"22:00","quiet_hours_end":"07:00",` +
 		`"preferences":[{"event_class":"*","channel":"email","enabled":false},{"event_class":"order.shipped","channel":"*","enabled":true,"min_severity":"warning"}]}`
 	if requests[1].raw != want {
 		t.Fatalf("PutSettings sent\n%s\nwant\n%s", requests[1].raw, want)

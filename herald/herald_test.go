@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -280,7 +281,7 @@ func TestFlushDropsWhatHeraldRejectsAndGoesOn(t *testing.T) {
 		t.Fatalf("write broken file: %v", err)
 	}
 
-	fake.answer(http.StatusForbidden, `{"error":{"code":"forbidden","message":"no"}}`)
+	fake.answer(http.StatusBadRequest, `{"error":{"code":"invalid_input","message":"no"}}`)
 	sent, err := client.Flush(t.Context())
 	if err != nil || sent != 0 {
 		t.Fatalf("Flush = %d, %v", sent, err)
@@ -290,6 +291,153 @@ func TestFlushDropsWhatHeraldRejectsAndGoesOn(t *testing.T) {
 	}
 	if left := spooled(t, dir); len(left) != 0 {
 		t.Fatalf("spool still holds %v", left)
+	}
+}
+
+// Herald, or a proxy in front of it, refusing the producer says nothing about the events: a
+// rotated key, a disabled producer, a type the key may no longer send, a route that is gone while
+// Herald restarts. The spool keeps them for the replay once that is fixed.
+func TestARefusedProducerKeepsItsSpool(t *testing.T) {
+	for _, refusal := range []struct {
+		status int
+		body   string
+	}{
+		{http.StatusUnauthorized, `{"error":{"code":"unauthorized","message":"no"}}`},
+		{http.StatusForbidden, `{"error":{"code":"type_not_allowed","message":"no"}}`},
+		{http.StatusNotFound, "404 page not found"},
+		{http.StatusFound, ""},
+	} {
+		t.Run(http.StatusText(refusal.status), func(t *testing.T) {
+			fake := newFakeHerald(t)
+			dir := t.TempDir()
+			var dropped []string
+			client, err := New(Options{
+				BaseURL: fake.server.URL, APIKey: "test-key", SpoolDir: dir,
+				OnDrop: func(eventID string, _ error) { dropped = append(dropped, eventID) },
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			fake.answer(http.StatusServiceUnavailable, "")
+			if err := client.Send(t.Context(), reading()); !errors.Is(err, ErrSpooled) {
+				t.Fatalf("Send = %v", err)
+			}
+
+			fake.answer(refusal.status, refusal.body)
+			err = client.Send(t.Context(), reading())
+			if _, isAccess := errors.AsType[*AccessError](err); !isAccess || !errors.Is(err, ErrSpooled) {
+				t.Fatalf("Send while the producer is refused = %v, want ErrSpooled and the AccessError", err)
+			}
+			before := len(fake.seen())
+			sent, err := client.Flush(t.Context())
+			if _, isAccess := errors.AsType[*AccessError](err); sent != 0 || !isAccess {
+				t.Fatalf("Flush while the producer is refused = %d, %v, want the AccessError", sent, err)
+			}
+			if after := len(fake.seen()); after != before+1 {
+				t.Fatalf("Flush made %d calls after the refusal, want it to stop at the first", after-before-1)
+			}
+			if len(dropped) != 0 || len(spooled(t, dir)) != 2 {
+				t.Fatalf("dropped %v, spool holds %v; want both events kept", dropped, spooled(t, dir))
+			}
+
+			fake.answer(http.StatusAccepted, "")
+			if sent, err := client.Flush(t.Context()); sent != 2 || err != nil {
+				t.Fatalf("Flush once the producer is let in = %d, %v, want both events", sent, err)
+			}
+		})
+	}
+}
+
+// Run tells the producer once that its spool is stuck behind a refusal, not at every tick, and
+// tells it again only after a replay got through in between.
+func TestRunReportsARefusalOnce(t *testing.T) {
+	fake := newFakeHerald(t)
+	dir := t.TempDir()
+	var reports atomic.Int32
+	client, err := New(Options{
+		BaseURL: fake.server.URL, APIKey: "test-key", SpoolDir: dir,
+		OnAccessError: func(error) { reports.Add(1) },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	fake.answer(http.StatusServiceUnavailable, "")
+	if err := client.Send(t.Context(), reading()); !errors.Is(err, ErrSpooled) {
+		t.Fatalf("Send = %v", err)
+	}
+	fake.answer(http.StatusUnauthorized, `{"error":{"code":"unauthorized","message":"no"}}`)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		client.Run(ctx, time.Millisecond)
+		close(done)
+	}()
+	waitFor(t, "several refused replays", func() bool { return len(fake.seen()) >= 6 })
+	if got := reports.Load(); got != 1 {
+		t.Fatalf("OnAccessError was called %d times, want once", got)
+	}
+	if left := spooled(t, dir); len(left) != 1 {
+		t.Fatalf("spool holds %v, want the event kept", left)
+	}
+	fake.answer(http.StatusAccepted, "")
+	waitFor(t, "the replay", func() bool { return len(spooled(t, dir)) == 0 })
+	cancel()
+	<-done
+}
+
+// Two replays at once (Run, and a Flush at shutdown) list the same files; the one that comes
+// second must not report an event the first delivered as dropped.
+func TestAnEventAnotherReplayDeliveredIsNotDropped(t *testing.T) {
+	dir := t.TempDir()
+	var spooling atomic.Bool
+	spooling.Store(true)
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if spooling.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		// While this event is delivered, the other replay delivers and removes the rest.
+		once.Do(func() {
+			entries, _ := os.ReadDir(dir)
+			for _, entry := range entries[1:] {
+				_ = os.Remove(filepath.Join(dir, entry.Name()))
+			}
+		})
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	var dropped []string
+	client, err := New(Options{
+		BaseURL: server.URL, APIKey: "test-key", SpoolDir: dir,
+		OnDrop: func(eventID string, _ error) { dropped = append(dropped, eventID) },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for range 3 {
+		if err := client.Send(t.Context(), reading()); !errors.Is(err, ErrSpooled) {
+			t.Fatalf("Send = %v", err)
+		}
+	}
+	spooling.Store(false)
+	if sent, err := client.Flush(t.Context()); sent != 1 || err != nil {
+		t.Fatalf("Flush = %d, %v, want the one event left to it", sent, err)
+	}
+	if len(dropped) != 0 {
+		t.Fatalf("events another replay delivered were reported as dropped: %v", dropped)
+	}
+}
+
+func waitFor(t *testing.T, what string, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -353,7 +501,7 @@ func TestEndpointCalls(t *testing.T) {
 	client := newClient(t, fake, "")
 	endpoint := Endpoint{
 		App: "shop-web", Subject: "shop/user:42", Address: "https://push.example.test/abc",
-		Keys: map[string]string{"p256dh": "p", "auth": "a"}, Locale: "uk",
+		Keys: map[string]string{"p256dh": "p", "auth": "a"}, Locale: "en",
 	}
 
 	if err := client.PutEndpoint(t.Context(), endpoint); err != nil {

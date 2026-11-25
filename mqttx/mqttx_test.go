@@ -361,3 +361,58 @@ func TestCloseCancelsTheConnectHandlers(t *testing.T) {
 	client.Close()
 	eventually(t, "the handler to see the cancellation", stopped.Load)
 }
+
+// A service that must not show stale values as live marks itself online once it has a good state;
+// the last will and Close still mark it offline.
+func TestDeferOnlineLeavesTheOnlineMessageToTheCaller(t *testing.T) {
+	b := newBroker(t)
+	client := New(Options{
+		Broker: b.url(), ClientID: "test-service", AvailabilityTopic: "test-service/availability",
+		DeferOnline: true, Timeout: 2 * time.Second,
+	})
+	t.Cleanup(client.Close)
+	var connected atomic.Int32
+	client.OnConnect(func(context.Context) { connected.Add(1) })
+	if err := client.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	eventually(t, "the connect handler", func() bool { return connected.Load() == 1 })
+	connects, published, _ := b.snapshot()
+	if connects[0].willTopic != "test-service/availability" || connects[0].willPayload != "offline" {
+		t.Fatalf("CONNECT = %+v, want the offline will", connects[0])
+	}
+	if len(published) != 0 {
+		t.Fatalf("published %+v before the caller marked the service online", published)
+	}
+
+	if err := client.SetAvailability(t.Context(), true); err != nil {
+		t.Fatalf("SetAvailability: %v", err)
+	}
+	b.drop()
+	eventually(t, "the reconnect", func() bool { return connected.Load() == 2 })
+	_, published, _ = b.snapshot()
+	if len(published) != 1 || published[0] != (message{topic: "test-service/availability", payload: "online", retain: true}) {
+		t.Fatalf("published %+v, want only the caller's retained online message", published)
+	}
+	client.Close()
+	_, published, _ = b.snapshot()
+	if last := published[len(published)-1]; last.payload != "offline" || !last.retain {
+		t.Fatalf("Close published %+v, want the retained offline availability", last)
+	}
+}
+
+// A connect that lands while Close runs must not mark the service online after Close marked it
+// offline: the clean disconnect that follows would leave the retained "online" in place.
+func TestAConnectDuringClosePublishesNothing(t *testing.T) {
+	b := newBroker(t)
+	client := newClient(t, b)
+	if err := client.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	eventually(t, "the availability", func() bool { _, published, _ := b.snapshot(); return len(published) == 1 })
+	client.cancel() // Close has begun
+	client.onConnect(client.client)
+	if _, published, _ := b.snapshot(); len(published) != 1 {
+		t.Fatalf("published %+v after Close began", published[1:])
+	}
+}

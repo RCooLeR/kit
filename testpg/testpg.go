@@ -47,7 +47,8 @@ func Open(t testing.TB, cfg Config) *pgxpool.Pool {
 	}
 	parsed, err := url.Parse(dsn)
 	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") ||
-		!strings.HasPrefix(strings.TrimPrefix(parsed.Path, "/"), cfg.DatabasePrefix) {
+		!strings.HasPrefix(strings.TrimPrefix(parsed.Path, "/"), cfg.DatabasePrefix) ||
+		!strings.HasPrefix(databaseOf(dsn), cfg.DatabasePrefix) {
 		// The DSN holds a password, so the message names the variable and never its value.
 		t.Fatalf("%s must be a postgres:// URL of a database named %s*", cfg.DSNEnv, cfg.DatabasePrefix)
 	}
@@ -91,4 +92,14 @@ func Open(t testing.TB, cfg Config) *pgxpool.Pool {
 		t.Fatalf("ping the test database: %v", err)
 	}
 	return pool
+}
+
+// databaseOf is the database pgx connects to for dsn, after a dbname query parameter and the like
+// overrode the URL's path; empty when pgx cannot read the DSN.
+func databaseOf(dsn string) string {
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return ""
+	}
+	return config.Database
 }

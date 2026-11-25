@@ -48,9 +48,14 @@ type Options struct {
 	Password string
 	// ClientID identifies the connection to the broker; two clients with one ID displace each other.
 	ClientID string
-	// AvailabilityTopic receives OnlinePayload (retained) on every connect and OfflinePayload as
-	// the last will and on Close. Empty publishes no availability.
+	// AvailabilityTopic receives OnlinePayload (retained) on every connect, unless DeferOnline is
+	// set, and OfflinePayload as the last will and on Close. Empty publishes no availability.
 	AvailabilityTopic string
+	// DeferOnline leaves the online message to the caller: a connect sets the last will but does
+	// not mark the service online, and SetAvailability does once the service has a good state.
+	// Without it, retained values from before a long outage show as live as soon as the service
+	// reconnects, before it has read anything.
+	DeferOnline bool
 	// OnlinePayload and OfflinePayload default to "online" and "offline".
 	OnlinePayload  string
 	OfflinePayload string
@@ -67,6 +72,9 @@ type Client struct {
 	// ctx is handed to the OnConnect handlers; Close cancels it.
 	ctx    context.Context
 	cancel context.CancelFunc
+	// availability orders the availability messages: once Close has begun, no "online" follows
+	// its "offline".
+	availability sync.Mutex
 
 	mu            sync.Mutex
 	connectFns    []func(context.Context)
@@ -120,14 +128,12 @@ func (c *Client) clientOptions() *paho.ClientOptions {
 }
 
 // onConnect runs on every connection, the first and each reconnect: availability, the
-// subscriptions again (the session is clean), then the caller's handlers.
+// subscriptions again (the session is clean), then the caller's handlers. A connect that lands
+// after Close has begun does nothing.
 func (c *Client) onConnect(client paho.Client) {
 	c.opts.Logger.Info("mqtt connected")
-	if c.opts.AvailabilityTopic != "" {
-		token := client.Publish(c.opts.AvailabilityTopic, 1, true, c.opts.OnlinePayload)
-		if !token.WaitTimeout(c.opts.Timeout) || token.Error() != nil {
-			c.opts.Logger.Warn("mqtt availability not published", "error", token.Error())
-		}
+	if !c.markOnline(client) {
+		return
 	}
 	c.mu.Lock()
 	subscriptions := make(map[string]func(string, []byte), len(c.subscriptions))
@@ -145,6 +151,43 @@ func (c *Client) onConnect(client paho.Client) {
 	for _, handler := range handlers {
 		go handler(c.ctx)
 	}
+}
+
+// markOnline publishes the online message unless DeferOnline leaves it to the caller. It reports
+// false when Close has begun.
+func (c *Client) markOnline(client paho.Client) bool {
+	c.availability.Lock()
+	defer c.availability.Unlock()
+	if c.ctx.Err() != nil {
+		return false
+	}
+	if c.opts.AvailabilityTopic != "" && !c.opts.DeferOnline {
+		token := client.Publish(c.opts.AvailabilityTopic, 1, true, c.opts.OnlinePayload)
+		if !token.WaitTimeout(c.opts.Timeout) || token.Error() != nil {
+			c.opts.Logger.Warn("mqtt availability not published", "error", token.Error())
+		}
+	}
+	return true
+}
+
+// SetAvailability publishes the retained online or offline message on AvailabilityTopic: online
+// once the service has a good state (see DeferOnline), offline while it cannot read what it
+// reports. It returns ErrNotConnected without a connection or after Close; the last will still
+// covers a lost connection.
+func (c *Client) SetAvailability(ctx context.Context, online bool) error {
+	if c.opts.AvailabilityTopic == "" {
+		return errors.New("mqtt: no availability topic is set")
+	}
+	payload := c.opts.OfflinePayload
+	if online {
+		payload = c.opts.OnlinePayload
+	}
+	c.availability.Lock()
+	defer c.availability.Unlock()
+	if c.ctx.Err() != nil {
+		return ErrNotConnected
+	}
+	return c.Publish(ctx, c.opts.AvailabilityTopic, []byte(payload), true)
 }
 
 // forgetfulStore is a paho.Store that keeps nothing.
@@ -285,11 +328,13 @@ func (c *Client) watchBirth(ctx context.Context, statusTopic, onlinePayload stri
 // Assistant's expire_after).
 func (c *Client) Close() {
 	c.cancel()
+	c.availability.Lock()
 	if c.opts.AvailabilityTopic != "" && c.client.IsConnectionOpen() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.opts.Timeout)
 		_ = c.Publish(ctx, c.opts.AvailabilityTopic, []byte(c.opts.OfflinePayload), true)
 		cancel()
 	}
+	c.availability.Unlock()
 	c.client.Disconnect(250)
 }
 

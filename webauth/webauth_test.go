@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,5 +155,61 @@ func TestLimiterBoundsItsMemory(t *testing.T) {
 	}
 	if got := len(limiter.buckets); got > maxBuckets {
 		t.Fatalf("the limiter holds %d keys, more than its bound of %d", got, maxBuckets)
+	}
+}
+
+// Filling the limiter with fresh keys must not set a blocked key free: the bound on memory would
+// otherwise be a way around the limit.
+func TestABlockedKeyStaysBlockedWhenTheLimiterFills(t *testing.T) {
+	now := time.Date(2026, time.November, 24, 12, 0, 0, 0, time.UTC)
+	limiter := NewLimiter(3, 15*time.Minute, func() time.Time { return now })
+	for range 4 {
+		limiter.Allow("login:owner")
+	}
+	// One guess short of the limit, so the key is not blocked yet.
+	for range 3 {
+		limiter.Allow("login:admin")
+	}
+	for i := range maxBuckets + 10 {
+		now = now.Add(time.Millisecond)
+		limiter.Allow("login:guess-" + strconv.Itoa(i))
+	}
+	if limiter.Allow("login:owner") {
+		t.Fatal("a blocked key was allowed again after fresh keys filled the limiter")
+	}
+	if limiter.Allow("login:admin") {
+		t.Fatal("a key at its limit got fresh attempts after fresh keys filled the limiter")
+	}
+	if got := len(limiter.buckets); got > maxBuckets {
+		t.Fatalf("the limiter holds %d keys, more than its bound of %d", got, maxBuckets)
+	}
+}
+
+// With every bucket over its limit there is nothing to forget, so a new key waits until a window
+// ends rather than the limiter growing or forgetting a blocked key.
+func TestAFullLimiterOfBlockedKeysRefusesNewKeys(t *testing.T) {
+	now := time.Date(2026, time.November, 24, 12, 0, 0, 0, time.UTC)
+	limiter := NewLimiter(1, time.Minute, func() time.Time { return now })
+	for i := range maxBuckets {
+		key := "address:" + strconv.Itoa(i)
+		limiter.Allow(key)
+		limiter.Allow(key)
+	}
+	if limiter.Allow("address:new") {
+		t.Fatal("a new key was allowed although that meant forgetting a blocked one")
+	}
+	if limiter.Allow("address:0") {
+		t.Fatal("a blocked key was allowed")
+	}
+	now = now.Add(time.Minute)
+	if !limiter.Allow("address:new") {
+		t.Fatal("a new key was refused after every window ended")
+	}
+}
+
+func TestALimitOfNoAttemptsAllowsNone(t *testing.T) {
+	limiter := NewLimiter(0, time.Minute, time.Now)
+	if limiter.Allow("login:owner") {
+		t.Fatal("a limiter of zero attempts allowed the first one")
 	}
 }
