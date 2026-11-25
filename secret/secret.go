@@ -137,5 +137,7 @@ func readRegularFile(path string, maxBytes int64) (string, error) {
 	if int64(len(raw)) > maxBytes {
 		return "", fmt.Errorf("%w: more than %d bytes", ErrTooLarge, maxBytes)
 	}
-	return strings.TrimRight(string(raw), "\r\n"), nil
+	// Windows editors and PowerShell 5.1 save UTF-8 with a byte order mark; it is no part of a
+	// secret, and a password with it silently fails.
+	return strings.TrimRight(strings.TrimPrefix(string(raw), "\ufeff"), "\r\n"), nil
 }

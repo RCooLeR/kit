@@ -79,5 +79,5 @@ jobs:
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
 
       - name: Scan Go dependencies
-        run: go tool govulncheck ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 

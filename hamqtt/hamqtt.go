@@ -31,8 +31,9 @@ const (
 	BinarySensor = "binary_sensor"
 )
 
-// idPattern is what Home Assistant accepts in node and object IDs and in the object part of an
-// entity ID.
+// idPattern is the shape this package allows for node and object IDs and the object part of an
+// entity ID. It is stricter than Home Assistant, which also takes hyphens and capitals in node and
+// object IDs: lower-case snake case is what entity IDs become anyway.
 var idPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 
 // componentPattern is the shape of a Home Assistant component (domain) name.

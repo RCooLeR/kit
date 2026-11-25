@@ -1,6 +1,6 @@
-# The kit builds no image of its own, but a consumer's Dockerfile can read this checkout as a named
-# build context (`--build-context kit=../kit`) instead of downloading a tagged version. Keep
-# repository metadata and local state out of what is sent to the builder.
+# The kit builds no image of its own. Consumers pin a commit through the module proxy; a build that
+# reads a local checkout as a named context (`--build-context kit=../kit`) while trying a change
+# gets repository metadata and local state kept out of what is sent to the builder.
 .git
 .github
 .idea

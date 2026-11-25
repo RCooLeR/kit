@@ -386,6 +386,27 @@ func TestRunReportsARefusalOnce(t *testing.T) {
 	<-done
 }
 
+// An interval from configuration may be zero; Run then uses its own instead of panicking.
+func TestRunWithoutAnIntervalStillReplays(t *testing.T) {
+	fake := newFakeHerald(t)
+	dir := t.TempDir()
+	client := newClient(t, fake, dir)
+	fake.answer(http.StatusServiceUnavailable, "")
+	if err := client.Send(t.Context(), reading()); !errors.Is(err, ErrSpooled) {
+		t.Fatalf("Send = %v", err)
+	}
+	fake.answer(http.StatusAccepted, "")
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		client.Run(ctx, 0)
+	}()
+	waitFor(t, "the replay", func() bool { return len(spooled(t, dir)) == 0 })
+	cancel()
+	<-done
+}
+
 // Two replays at once (Run, and a Flush at shutdown) list the same files; the one that comes
 // second must not report an event the first delivered as dropped.
 func TestAnEventAnotherReplayDeliveredIsNotDropped(t *testing.T) {

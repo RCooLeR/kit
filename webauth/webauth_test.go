@@ -213,3 +213,21 @@ func TestALimitOfNoAttemptsAllowsNone(t *testing.T) {
 		t.Fatal("a limiter of zero attempts allowed the first one")
 	}
 }
+
+// A key that has used its whole allowance is as good as blocked: its next attempt is refused.
+// Fresh keys that each use their whole allowance too must not push it out and hand it a new one.
+func TestAKeyAtItsLimitStaysWhenFullKeysFillTheLimiter(t *testing.T) {
+	now := time.Date(2026, time.November, 24, 12, 0, 0, 0, time.UTC)
+	limiter := NewLimiter(2, 15*time.Minute, func() time.Time { return now })
+	limiter.Allow("login:admin")
+	limiter.Allow("login:admin")
+	for i := range maxBuckets {
+		now = now.Add(time.Millisecond)
+		key := "login:guess-" + strconv.Itoa(i)
+		limiter.Allow(key)
+		limiter.Allow(key)
+	}
+	if limiter.Allow("login:admin") {
+		t.Fatal("a key that used its allowance got new attempts after full keys filled the limiter")
+	}
+}

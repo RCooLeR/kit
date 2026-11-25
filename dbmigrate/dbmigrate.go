@@ -45,7 +45,8 @@ func Down(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) error {
 }
 
 // Check fails with ErrSchemaMismatch unless the database is exactly at the newest migration in
-// migrations and not dirty. It changes nothing.
+// migrations and not dirty. It applies nothing; on a database without golang-migrate's version
+// table it creates that table, which needs a role allowed to create tables.
 func Check(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) error {
 	latest, err := Latest(migrations)
 	if err != nil {

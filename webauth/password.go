@@ -56,6 +56,10 @@ func HashPassword(password string) (string, error) {
 
 // VerifyPassword reports whether password matches encodedHash. A wrong password is (false, nil);
 // an error means the stored hash itself is unusable (ErrInvalidHash).
+//
+// Each call holds the hash's memory (64 MiB with the defaults) for its duration, and the Limiter
+// lets every new key try. A service on a small host should bound how many verifications run at
+// once, for example with a buffered channel used as a semaphore around this call.
 func VerifyPassword(password, encodedHash string) (bool, error) {
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" || parts[2] != "v=19" {

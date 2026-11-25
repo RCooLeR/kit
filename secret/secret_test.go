@@ -32,6 +32,8 @@ func TestStrictResolve(t *testing.T) {
 		{"value is returned unchanged", func(*testing.T) Input { return input(" pass word ", "") }, " pass word ", nil},
 		{"blank value", func(*testing.T) Input { return input("  ", "") }, "", ErrEmpty},
 		{"file loses only its line break", func(t *testing.T) Input { return input("", writeFile(t, " s3cret \r\n")) }, " s3cret ", nil},
+		// Windows editors and PowerShell 5.1 write UTF-8 with a byte order mark; it is no part of a secret.
+		{"file loses a byte order mark", func(t *testing.T) Input { return input("", writeFile(t, "\ufeffs3cret\r\n")) }, "s3cret", nil},
 		{"path is trimmed", func(t *testing.T) Input { return input("", "  "+writeFile(t, "abc\n")+" ") }, "abc", nil},
 		{"value and file", func(t *testing.T) Input { return input("abc", writeFile(t, "abc")) }, "", ErrBothSet},
 		{"empty file", func(t *testing.T) Input { return input("", writeFile(t, "")) }, "", ErrEmpty},

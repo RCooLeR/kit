@@ -145,10 +145,11 @@ func (e *RejectedError) Error() string {
 }
 
 // AccessError means Herald, or a proxy in front of it, refused the producer rather than the
-// request: a key Herald does not accept or a disabled producer (401), an event type the key may
-// not send (403), a route that is gone (404 without Herald's error code, as a proxy answers while
-// Herald restarts) or a redirect. The request itself may be fine: once the key, the producer or
-// the address is fixed, the same request succeeds, so Send spools the event and Flush keeps it.
+// request: a key Herald does not accept or a disabled producer (401), a 403, a route that is gone
+// (404 without Herald's error code, as a proxy answers while Herald restarts) or a redirect. The
+// request itself may be fine: once the key, the producer or the address is fixed, the same request
+// succeeds, so Send spools the event and Flush keeps it. An event type the producer may not send
+// is about that one event: Herald answers 422 type_not_allowed, a *RejectedError.
 type AccessError struct {
 	// Status is the HTTP status; Code is Herald's error code, empty when it sent none.
 	Status int
@@ -168,7 +169,7 @@ const DefaultTimeout = 5 * time.Second
 
 // Options configure a Client.
 type Options struct {
-	// BaseURL is Herald's address, such as "http://herald:8080".
+	// BaseURL is Herald's address, such as "http://herald:9099".
 	BaseURL string
 	// APIKey is the producer's key, issued by Herald.
 	APIKey string
@@ -316,9 +317,16 @@ func (c *Client) drop(name string, cause error) {
 	_ = c.spool.remove(name)
 }
 
-// Run replays the spool every interval until ctx ends. A failed replay is tried again at the
-// next tick; Run itself never fails. A replay stopped by an *AccessError goes to OnAccessError.
+// DefaultReplayInterval is how often Run replays the spool when it is given no interval.
+const DefaultReplayInterval = 30 * time.Second
+
+// Run replays the spool every interval until ctx ends; zero or less means DefaultReplayInterval.
+// A failed replay is tried again at the next tick; Run itself never fails. A replay stopped by an
+// *AccessError goes to OnAccessError.
 func (c *Client) Run(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = DefaultReplayInterval
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	refused := false
@@ -492,9 +500,10 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, out
 }
 
 // refusesTheRequest tells a refusal of what a request says from one of the producer. 400, 413 and
-// 422 are about the body whoever answers. 404, 409 and 410 are about it only when Herald itself
-// says why: a bare 404 is a route that is gone. Anything else (401, 403, 3xx) is about the
-// producer's key or address.
+// 422 are about the body whoever answers; Herald answers an event type the producer may not send
+// with 422 type_not_allowed, so one such event never holds up the others. 404, 409 and 410 are
+// about the body only when Herald itself says why: a bare 404 is a route that is gone. Anything
+// else (401, 403, 3xx) is about the producer's key or address.
 func refusesTheRequest(status int, code string) bool {
 	switch status {
 	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:

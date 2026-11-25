@@ -65,19 +65,19 @@ scrapes as before. New services switch them on.
 
 ## Using the module
 
-Until a version is tagged, a consumer keeps a checkout of this repository next to its own and
-points at it:
+No version is tagged yet. Pin a commit of `main`:
 
 ```
-// go.mod
-require github.com/RCooLeR/kit v0.0.0
-replace github.com/RCooLeR/kit => ../kit
+go get github.com/RCooLeR/kit@<commit>
 ```
 
-A Docker build can read that checkout as a named build context
-(`docker buildx build --build-context kit=../kit .`); `.dockerignore` keeps repository metadata out.
-Once versions are tagged (`vMAJOR.MINOR.PATCH`), `go get github.com/RCooLeR/kit@<version>` replaces
-both.
+This writes a pseudo-version (`v0.0.0-<UTC time>-<12 hex digits>`) to `go.mod` and its hashes to
+`go.sum`; no `replace` and no checkout next to the consumer. A build then needs to reach the module
+proxy and the checksum database, as for any other module. Once versions are tagged
+(`vMAJOR.MINOR.PATCH`), `go get github.com/RCooLeR/kit@<version>` moves to a release.
+
+To try a change of the kit in a consumer before it is committed, a temporary
+`replace github.com/RCooLeR/kit => ../kit` points at a local checkout; do not commit it.
 
 ## Development
 
@@ -89,7 +89,7 @@ go vet ./...
 go test ./...                                   # database tests are skipped without a database
 go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
-go tool govulncheck ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 ```
 
 The database tests (`dbpg`, `dbmigrate`, `testpg`) need a disposable PostgreSQL 18. Every test

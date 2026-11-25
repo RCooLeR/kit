@@ -17,7 +17,10 @@ First set of packages, extracted from existing services while building Herald.
 - `herald`: `ForwardAnswer` passes on a tap on an action button in the producer's own app (Web Push
   or FCM) to the service.
 - `webauth`: argon2id password hashing, tokens stored as digests, an attempt limiter that never
-  forgets a key over its limit to make room.
+  forgets a key with no attempts left to make room.
+- `secret`: `Strict` drops a UTF-8 byte order mark at the start of a file.
+- `herald`: `Run` with an interval of zero or less replays every `DefaultReplayInterval` instead of
+  panicking.
 - `dbpg`: `Options.WaitFor` keeps trying a database that is still starting.
 - `mqttx`: an MQTT client for services that publish (Eclipse Paho): retained availability with a
   last will, QoS 1 publish with a timeout, subscriptions and handlers renewed on every reconnect,

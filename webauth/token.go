@@ -39,9 +39,9 @@ func EqualHash(a, b []byte) bool {
 // that accept guessable secrets (passwords, codes). State is in memory, which fits a
 // single-instance service; a restart forgets the attempts.
 //
-// It holds at most maxBuckets keys. When fresh keys fill it, the key within its limit with the
-// fewest attempts makes room; a key over its limit is never forgotten before its window ends. When
-// every key is over its limit, a new key is refused until a window ends.
+// It holds at most maxBuckets keys. When fresh keys fill it, the key with attempts left and the
+// fewest attempts made makes room; a key that has used its allowance is never forgotten before its
+// window ends. When no key has attempts left, a new key is refused until a window ends.
 type Limiter struct {
 	maxAttempts int
 	window      time.Duration
@@ -91,10 +91,10 @@ func (l *Limiter) Reset(key string) {
 	delete(l.buckets, key)
 }
 
-// makeRoom frees one place for a new key: expired keys go first, then the key within its limit
-// with the fewest attempts, the oldest of those. Forgetting a key with many attempts would hand
-// them back, so a flood of fresh keys pushes out only its own kind. It reports false when every
-// key is over its limit, which is the attempt to refuse.
+// makeRoom frees one place for a new key: expired keys go first, then the key with attempts left
+// and the fewest attempts made, the oldest of those. Forgetting a key with many attempts would hand
+// them back, so a flood of fresh keys pushes out only its own kind. It reports false when no key has
+// attempts left, which is the attempt to refuse.
 func (l *Limiter) makeRoom(now time.Time) bool {
 	var victim *bucket
 	var victimKey string
@@ -102,7 +102,7 @@ func (l *Limiter) makeRoom(now time.Time) bool {
 		switch {
 		case now.Sub(b.startedAt) >= l.window:
 			delete(l.buckets, key)
-		case b.count > l.maxAttempts:
+		case b.count >= l.maxAttempts: // no attempts left: as good as blocked
 		case victim == nil || b.count < victim.count || (b.count == victim.count && b.startedAt.Before(victim.startedAt)):
 			victim, victimKey = b, key
 		}
