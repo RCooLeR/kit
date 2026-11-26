@@ -40,6 +40,7 @@ func TestPackagesStaySplitByWeight(t *testing.T) {
 		{pkg: "retry", stdlibOnly: true},
 		{pkg: "herald", stdlibOnly: true},
 		{pkg: "hamqtt", stdlibOnly: true},
+		{pkg: "cockpit", stdlibOnly: true},
 		{pkg: "webauth", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mqttx", forbidden: []string{zerolog, cli, prometheus, pgx, migrate}},
 		{pkg: "logx", forbidden: []string{cli, prometheus, pgx, migrate, paho}},

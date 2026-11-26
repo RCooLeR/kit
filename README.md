@@ -33,6 +33,7 @@ Three rules shape the module:
 | `herald` | Client of the Herald notification service: send events, register addresses, set a user's preferences, spool to disk while Herald is unreachable; verify the signed answer callbacks | standard library |
 | `webauth` | argon2id password hashes, random tokens stored as digests, a login attempt limiter | x/crypto |
 | `hamqtt` | Home Assistant MQTT discovery configs and topics, with checks of every ID the caller passes | standard library |
+| `cockpit` | An application's cockpit summary: `GET /api/v1/cockpit` behind a bearer key from a file (constant-time check, 404 without a key), and the answer's types | standard library |
 | `mqttx` | MQTT client for publishing services: availability with a last will, QoS 1 publish, replay after a reconnect or a Home Assistant restart | Eclipse Paho |
 | `logx` | A service's root zerolog logger, and a `log/slog` bridge | zerolog |
 | `promx` | Private registry, `/metrics` handler, build-info gauge with the caller's name | client_golang |

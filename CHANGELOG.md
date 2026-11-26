@@ -19,6 +19,8 @@ First set of packages, extracted from existing services while building Herald.
 - `webauth`: argon2id password hashing, tokens stored as digests, an attempt limiter that never
   forgets a key with no attempts left to make room.
 - `secret`: `Strict` drops a UTF-8 byte order mark at the start of a file.
+- `cockpit`: the handler and types of an application's cockpit summary (`GET /api/v1/cockpit` with
+  a bearer key compared in constant time; 404 without a key).
 - `herald`: `Run` with an interval of zero or less replays every `DefaultReplayInterval` instead of
   panicking.
 - `dbpg`: `Options.WaitFor` keeps trying a database that is still starting.
