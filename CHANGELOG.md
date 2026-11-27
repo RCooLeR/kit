@@ -21,6 +21,13 @@ First set of packages, extracted from existing services while building Herald.
 - `secret`: `Strict` drops a UTF-8 byte order mark at the start of a file.
 - `cockpit`: the handler and types of an application's cockpit summary (`GET /api/v1/cockpit` with
   a bearer key compared in constant time; 404 without a key).
+- `mcpx`: an application's MCP endpoint on the official Go SDK (`/mcp`, Streamable HTTP without
+  sessions, JSON answers) behind a bearer key compared in constant time, 404 without a key. Limits
+  on the body (1 MiB by default) and on each tool call (30 s), recovery from panics, one `Call`
+  report per tool call (tool, read-only, target, result, duration, cause; never the arguments),
+  `Read` and `Write` tool descriptions with their hints, and errors: an `Error` reaches the client
+  as written, any other error is replaced by a general message. `mcpx/mcpxtest`: an in-memory
+  session, tool calls as text, and `FindSecret` / `NoSecret` for output checks.
 - `herald`: `Run` with an interval of zero or less replays every `DefaultReplayInterval` instead of
   panicking.
 - `dbpg`: `Options.WaitFor` keeps trying a database that is still starting.

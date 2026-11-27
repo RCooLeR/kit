@@ -34,6 +34,8 @@ Three rules shape the module:
 | `webauth` | argon2id password hashes, random tokens stored as digests, a login attempt limiter | x/crypto |
 | `hamqtt` | Home Assistant MQTT discovery configs and topics, with checks of every ID the caller passes | standard library |
 | `cockpit` | An application's cockpit summary: `GET /api/v1/cockpit` behind a bearer key from a file (constant-time check, 404 without a key), and the answer's types | standard library |
+| `mcpx` | An application's Model Context Protocol endpoint: `/mcp` over Streamable HTTP without sessions, behind a bearer key from a file (constant-time check, 404 without a key); body and time limits, panic recovery, one report per tool call without its arguments, and only deliberate errors reach the client | MCP Go SDK |
+| `mcpx/mcpxtest` | Tests of an application's tools: an in-memory session, tool calls read as text, a check that no output shows a secret | MCP Go SDK |
 | `mqttx` | MQTT client for publishing services: availability with a last will, QoS 1 publish, replay after a reconnect or a Home Assistant restart | Eclipse Paho |
 | `logx` | A service's root zerolog logger, and a `log/slog` bridge | zerolog |
 | `promx` | Private registry, `/metrics` handler, build-info gauge with the caller's name | client_golang |
