@@ -97,8 +97,9 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bpassword=[^\s&"]+`),
 	// A bearer header value.
 	regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}`),
-	// A JSON field named like a secret with a value.
-	regexp.MustCompile(`(?i)"(password|passwd|secret|secret_key|token|access_token|refresh_token|api_key|apikey|` +
+	// A JSON field named like a secret with a value. A bare "token" is left out: APIs name
+	// identifiers that way; a secret token is caught by its planted value.
+	regexp.MustCompile(`(?i)"(password|passwd|secret|secret_key|access_token|refresh_token|api_key|apikey|` +
 		`private_key|client_secret|callback_key|dsn)"\s*:\s*"[^"]+"`),
 }
 

@@ -27,7 +27,8 @@ First set of packages, extracted from existing services while building Herald.
   report per tool call (tool, read-only, target, result, duration, cause; never the arguments),
   `Read` and `Write` tool descriptions with their hints, and errors: an `Error` reaches the client
   as written, any other error is replaced by a general message. `mcpx/mcpxtest`: an in-memory
-  session, tool calls as text, and `FindSecret` / `NoSecret` for output checks.
+  session, tool calls as text, and `FindSecret` / `NoSecret` for output checks; a JSON field named
+  just `token` counts as an identifier, not a secret.
 - `herald`: `Run` with an interval of zero or less replays every `DefaultReplayInterval` instead of
   panicking.
 - `dbpg`: `Options.WaitFor` keeps trying a database that is still starting.
