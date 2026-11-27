@@ -16,6 +16,8 @@ const (
 	pgx        = "github.com/jackc/"
 	migrate    = "github.com/golang-migrate/"
 	paho       = "github.com/eclipse/paho"
+	oidc       = "github.com/coreos/go-oidc"
+	oauth2     = "golang.org/x/oauth2"
 )
 
 // TestPackagesStaySplitByWeight guards the promise that importing a small package does not pull a
@@ -41,7 +43,8 @@ func TestPackagesStaySplitByWeight(t *testing.T) {
 		{pkg: "herald", stdlibOnly: true},
 		{pkg: "hamqtt", stdlibOnly: true},
 		{pkg: "cockpit", stdlibOnly: true},
-		{pkg: "webauth", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
+		{pkg: "webauth", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho, oidc, oauth2}},
+		{pkg: "webauth/oidcsso", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mcpx", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mcpx/mcpxtest", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mqttx", forbidden: []string{zerolog, cli, prometheus, pgx, migrate}},

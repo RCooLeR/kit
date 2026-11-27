@@ -7,6 +7,9 @@ may change interfaces; such changes are listed here.
 
 First set of packages, extracted from existing services while building Herald.
 
+- `webauth/oidcsso` supports OpenID Connect sign-in with S256 PKCE, lazy discovery,
+  passive browser sign-in, and optional signed MFA assurance.
+
 - `buildinfo`, `secret`, `healthcheck`, `healthcheck/healthcheckcli`, `httpserver`, `jsonhttp`,
   `retry`, `logx`, `promx`, `dbpg`, `dbmigrate`, `testpg`.
 - `herald`: the client of the Herald notification service, with a disk spool. Only an event Herald
@@ -18,6 +21,8 @@ First set of packages, extracted from existing services while building Herald.
   or FCM) to the service.
 - `webauth`: argon2id password hashing, tokens stored as digests, an attempt limiter that never
   forgets a key with no attempts left to make room.
+- `webauth`: TOTP enrollment and six-digit code matching. Persist the last accepted counter
+  per credential and update it atomically to prevent replay.
 - `secret`: `Strict` drops a UTF-8 byte order mark at the start of a file.
 - `cockpit`: the handler and types of an application's cockpit summary (`GET /api/v1/cockpit` with
   a bearer key compared in constant time; 404 without a key).

@@ -31,7 +31,8 @@ Three rules shape the module:
 | `jsonhttp` | `WriteJSON`, `WriteError` with the `{"error":{"code","message"}}` envelope | standard library |
 | `retry` | Next backoff delay, jitter, context sleep, `Retry-After` | standard library |
 | `herald` | Client of the Herald notification service: send events, register addresses, set a user's preferences, spool to disk while Herald is unreachable; verify the signed answer callbacks | standard library |
-| `webauth` | argon2id password hashes, random tokens stored as digests, a login attempt limiter | x/crypto |
+| `webauth` | argon2id password hashes, random tokens stored as digests, a login attempt limiter, authenticator app TOTP | x/crypto |
+| [`webauth/oidcsso`](webauth/oidcsso/README.md) | OpenID Connect sign-in for independently registered applications, with PKCE and optional issuer MFA | go-oidc, x/oauth2 |
 | `hamqtt` | Home Assistant MQTT discovery configs and topics, with checks of every ID the caller passes | standard library |
 | `cockpit` | An application's cockpit summary: `GET /api/v1/cockpit` behind a bearer key from a file (constant-time check, 404 without a key), and the answer's types | standard library |
 | `mcpx` | An application's Model Context Protocol endpoint: `/mcp` over Streamable HTTP without sessions, behind a bearer key from a file (constant-time check, 404 without a key); body and time limits, panic recovery, one report per tool call without its arguments, and only deliberate errors reach the client | MCP Go SDK |

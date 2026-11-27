@@ -1,6 +1,6 @@
 // Package webauth holds what a web service needs to let people and programs prove who they are:
 // password hashes (argon2id), random tokens of which only a digest is stored, and a limiter for
-// the endpoints that accept guessable secrets.
+// the endpoints that accept guessable secrets, and authenticator app TOTP.
 //
 // Storage, cookies and routes stay with the service: this package never reads a request and
 // names no cookie, header or table.
