@@ -243,6 +243,35 @@ func TestCallbacksThatDoNotFitAreRejected(t *testing.T) {
 	}
 }
 
+// A rejected callback of a found attempt still says what the attempt was for, so a failed link
+// lands on the link's failure page; it never carries the account or an identity.
+func TestARejectedCallbackOfAFoundAttemptKeepsItsPurpose(t *testing.T) {
+	for name, query := range map[string]func(state string) string{
+		"issuer error":              func(s string) string { return "error=access_denied&state=" + s },
+		"a code the issuer refuses": func(s string) string { return "code=bad-code&state=" + s },
+		"another issuer":            func(s string) string { return "code=good-code&iss=https%3A%2F%2Fevil.example.test&state=" + s },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			location, cookie := f.start(t, Request{Purpose: PurposeLink, Account: "account-7", Carry: "session-digest"})
+			result, _, err := f.finish(t, http.MethodGet, query(stateOf(t, location)), cookie)
+			if !errors.Is(err, ErrRejected) || result.Purpose != PurposeLink || result.Carry != "session-digest" ||
+				result.Account != "" || result.Identity.Subject != "" || result.Interaction {
+				t.Fatalf("finish = %+v, %v; want rejected with the purpose and carry only", result, err)
+			}
+		})
+	}
+	f := newFixture(t)
+	location, cookie := f.start(t, Request{Purpose: PurposeLink, Account: "account-7"})
+	query := "code=good-code&state=" + stateOf(t, location)
+	if _, _, err := f.finish(t, http.MethodGet, query, cookie); err != nil {
+		t.Fatal(err)
+	}
+	if result, _, err := f.finish(t, http.MethodGet, query, cookie); !errors.Is(err, ErrRejected) || result.Purpose != "" {
+		t.Fatalf("a replayed callback = %+v, %v; want rejected without a purpose", result, err)
+	}
+}
+
 func TestAPassiveCheckWithoutAnIssuerSessionLeadsToTheLocalSignIn(t *testing.T) {
 	f := newFixture(t)
 	location, cookie := f.start(t, Request{Purpose: PurposeSignIn, Passive: true})

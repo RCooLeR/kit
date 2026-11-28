@@ -14,7 +14,8 @@ First set of packages, extracted from existing services while building Herald.
   serves `StartPath` and `CallbackPath`: attempts bound to one browser by a host-only Lax cookie
   and a single-use record of its digest (`Attempts`, `NewMemoryAttempts`), strict callback checks,
   passive checks that fall back to the local sign-in, brokered social providers, and
-  `PurposeLink` for linking the signed-in account.
+  `PurposeLink` for linking the signed-in account. A rejected callback of a found attempt keeps
+  its `Purpose` and `Carry`, so a failed link lands on the link's failure page.
 
 - `buildinfo`, `secret`, `healthcheck`, `healthcheck/healthcheckcli`, `httpserver`, `jsonhttp`,
   `retry`, `logx`, `promx`, `dbpg`, `dbmigrate`, `testpg`.

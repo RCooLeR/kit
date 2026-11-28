@@ -314,7 +314,8 @@ var passiveErrors = []string{"login_required", "interaction_required", "consent_
 
 // Finish checks a callback request, consumes its attempt and clears the cookie, and returns what
 // was verified. Call it from the handler of CallbackPath; on any error, answer with the same
-// failure page.
+// failure page for the purpose returned: once the attempt is found, a rejection keeps its Purpose
+// and Carry (an empty Purpose means no attempt was found).
 func (f *Flow) Finish(w http.ResponseWriter, r *http.Request) (Result, error) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	if r.Method != http.MethodGet || len(r.URL.RawQuery) > maxQueryBytes {
@@ -337,6 +338,9 @@ func (f *Flow) Finish(w http.ResponseWriter, r *http.Request) (Result, error) {
 	if err != nil || !valid {
 		return Result{}, fmt.Errorf("%w: unknown, used or expired attempt", ErrRejected)
 	}
+	// From here the attempt is found: a rejection still says what it was for, so the application can
+	// tell a failed link from a failed sign-in, but it carries no account and no identity.
+	rejected := Result{Purpose: attempt.Purpose, Carry: attempt.Carry}
 	result := Result{Purpose: attempt.Purpose, Account: attempt.Account, Carry: attempt.Carry}
 	if attempt.Passive && len(query["error"]) == 1 && slices.Contains(passiveErrors, query.Get("error")) {
 		result.Interaction = true
@@ -345,14 +349,14 @@ func (f *Flow) Finish(w http.ResponseWriter, r *http.Request) (Result, error) {
 	issuer := f.opts.Provider.Issuer()
 	if query.Has("error") || len(query["code"]) != 1 || query.Get("code") == "" ||
 		(query.Has("iss") && (len(query["iss"]) != 1 || query.Get("iss") != issuer)) {
-		return Result{}, fmt.Errorf("%w: error, missing code or another issuer", ErrRejected)
+		return rejected, fmt.Errorf("%w: error, missing code or another issuer", ErrRejected)
 	}
 	identity, err := f.opts.Provider.Exchange(r.Context(), query.Get("code"), attempt.Attempt)
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: exchange: %w", ErrRejected, err)
+		return rejected, fmt.Errorf("%w: exchange: %w", ErrRejected, err)
 	}
 	if identity.Issuer != issuer || !oidcsso.ValidSubject(identity.Subject) {
-		return Result{}, fmt.Errorf("%w: identity from another issuer or without a valid subject", ErrRejected)
+		return rejected, fmt.Errorf("%w: identity from another issuer or without a valid subject", ErrRejected)
 	}
 	result.Identity = identity
 	return result, nil
