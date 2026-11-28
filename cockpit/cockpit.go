@@ -77,7 +77,7 @@ type Item struct {
 
 // Summary is the answer of the cockpit path.
 type Summary struct {
-	// App is the application's token, such as "upkeep".
+	// App is the application's token, such as "homeledger".
 	App     string    `json:"app"`
 	State   State     `json:"state"`
 	Numbers [2]Number `json:"numbers"`

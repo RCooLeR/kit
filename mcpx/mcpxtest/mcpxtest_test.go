@@ -23,7 +23,7 @@ func TestFindSecret(t *testing.T) {
 		`{"id":"0190a5e2-7b3c-7d4e-8f5a-1b2c3d4e5f60","title":"Рахунок до 30 листопада","url":"https://example.test/bills/7"}`,
 		`{"has_key":true,"key_prefix":"hk_2a","problem_secret":"bot_token","token_count":3}`,
 		// An API may name an identifier "token", as Herald does for its producers and apps.
-		`{"token":"upkeep","display_name":"Upkeep"}`,
+		`{"token":"homeledger","display_name":"HomeLedger"}`,
 		"the password was changed yesterday",
 		"short pw",
 	}
