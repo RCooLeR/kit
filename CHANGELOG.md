@@ -9,6 +9,12 @@ First set of packages, extracted from existing services while building Herald.
 
 - `webauth/oidcsso` supports OpenID Connect sign-in with S256 PKCE, lazy discovery,
   passive browser sign-in, and optional signed MFA assurance.
+- `webauth/federation`: the browser side of OpenID Connect sign-in. `LoadFile` reads an
+  application's client file (unknown members refused, the secret file next to it), and `Flow`
+  serves `StartPath` and `CallbackPath`: attempts bound to one browser by a host-only Lax cookie
+  and a single-use record of its digest (`Attempts`, `NewMemoryAttempts`), strict callback checks,
+  passive checks that fall back to the local sign-in, brokered social providers, and
+  `PurposeLink` for linking the signed-in account.
 
 - `buildinfo`, `secret`, `healthcheck`, `healthcheck/healthcheckcli`, `httpserver`, `jsonhttp`,
   `retry`, `logx`, `promx`, `dbpg`, `dbmigrate`, `testpg`.

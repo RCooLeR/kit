@@ -45,6 +45,7 @@ func TestPackagesStaySplitByWeight(t *testing.T) {
 		{pkg: "cockpit", stdlibOnly: true},
 		{pkg: "webauth", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho, oidc, oauth2}},
 		{pkg: "webauth/oidcsso", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
+		{pkg: "webauth/federation", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mcpx", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mcpx/mcpxtest", forbidden: []string{zerolog, cli, prometheus, pgx, migrate, paho}},
 		{pkg: "mqttx", forbidden: []string{zerolog, cli, prometheus, pgx, migrate}},
